@@ -1,0 +1,57 @@
+Description: Patch to make 4.2.1 compatible with Debian's 4.1.0 and
+ 4.2.0 packages 4.2.1 includes the Debian patches to extend the login
+ name and $TERM length, but uses even larger values. This causes
+ screen clients to no more be able to talk to older screen
+ servers. See #644788 for a discussion of the same issue with earlier
+ release combinations (4.1.0 vs 4.0.3).
+ .
+ For now this patch sets the mentioned values back to those which
+ werew in use in Debian before (and seemed to be large enough for use
+ in Debian).
+Author: Axel Beckert <abe@debian.org>
+Forwarded: no
+
+--- a/os.h
++++ b/os.h
+@@ -524,6 +524,6 @@
+ /* Changing those you won't be able to attach to your old sessions
+  * when changing those values in official tree don't forget to bump
+  * MSG_VERSION */
+-#define MAXTERMLEN	32
+-#define MAXLOGINLEN	256
++#define MAXTERMLEN	40
++#define MAXLOGINLEN	50
+ 
+--- a/screen.h
++++ b/screen.h
+@@ -186,7 +186,7 @@
+  * 4:	screen version 4.2.1		(bumped once again due to changed terminal and login length)
+  * 5: 	screen version 4.4.0		(fix screenterm size)
+  */
+-#define MSG_VERSION	5
++#define MSG_VERSION	2
+ 
+ #define MSG_REVISION	(('m'<<24) | ('s'<<16) | ('g'<<8) | MSG_VERSION)
+ struct msg
+@@ -205,7 +205,7 @@
+ 	  int nargs;
+ 	  char line[MAXPATHLEN];
+ 	  char dir[MAXPATHLEN];
+-	  char screenterm[MAXTERMLEN + 1];	/* is screen really "screen" ? */
++	  char screenterm[20];	/* is screen really "screen" ? */
+ 	}
+       create;
+       struct
+--- a/socket.c
++++ b/socket.c
+@@ -723,8 +723,8 @@
+       goto end;
+     }
+   if (nwin->term != nwin_undef.term)
+-    strncpy(m.m.create.screenterm, nwin->term, MAXTERMLEN);
+-  m.m.create.screenterm[MAXTERMLEN] = '\0';
++    strncpy(m.m.create.screenterm, nwin->term, 20-1);
++  m.m.create.screenterm[20-1] = '\0';
+   m.protocol_revision = MSG_REVISION;
+   debug1("SendCreateMsg writing '%s'\n", m.m.create.line);
+   if (write(s, (char *) &m, sizeof m) != sizeof m)

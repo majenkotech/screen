@@ -1,0 +1,18 @@
+# 01-08: fixes to configure, altering preprocessor macros etc.
+05prefer-libtinfo-over-libcurses.patch
+# 10-79: "regular" code and documentation fixes
+11replace_doc_paths.patch
+13split_info_files.patch
+26source_encoding.patch
+45suppress_remap.patch
+#52fix_screen_utf8_nfd.patch
+58-show-encoding-hardstatus.patch
+60-screen-4.2.1-debian4.1.0-compatibility.patch
+61-default-PATH_MAX-if-undefined-for-hurd.patch
+63-add-utempter-switch.patch
+64-fix-manpage-typos-reported-by-lintian.patch
+# 80-89: experimental patches, new features etc.
+80_session_creation_docs.patch
+81_session_creation_util.patch
+82_session_creation_core.patch
+99_CVE-2021-26937.patch

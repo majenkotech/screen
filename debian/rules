@@ -1,0 +1,77 @@
+#!/usr/bin/make -f
+#
+# Copyright (C) 1997 joost witteveen <joost@rulcmc.leidenuniv.nl>
+# Copyright (C) 1997-2001 Juan Cespedes <cespedes@debian.org>
+# Copyright (C) 2001 Adam Lazur <zal@debian.org>
+# Copyright (C) 2011-2016 Axel Beckert <abe@debian.org>
+
+# Uncomment me to turn on debugging
+#export DH_VERBOSE=1
+
+export DEB_BUILD_MAINT_OPTIONS=hardening=+all
+export DEB_CFLAGS_MAINT_APPEND=-Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers
+
+ROOT := $(CURDIR)/debian/screen
+ROOT_UDEB := $(CURDIR)/debian/screen-udeb
+# statically define this... sucko
+TTYGROUP := 5
+# Common configure options for .deb and .udeb
+SCREEN_CONFIGURE=--with-socket-dir=/run/screen \
+		 --with-pty-mode=0620 \
+		 --with-pty-group=${TTYGROUP} \
+		 --enable-rxvt_osc \
+		 --with-sys-screenrc=/etc/screenrc \
+		 --enable-colors256 \
+		 --enable-telnet \
+		 --enable-use-locale
+
+%:
+	dh $@
+
+override_dh_auto_clean:
+	rm -rf build build-udeb
+
+override_dh_auto_configure:
+	dh_auto_configure -B build -- $(SCREEN_CONFIGURE) --enable-pam --enable-utempter
+	# To minimize the library dependencies, the .udeb binary is
+	# built without "--enable-pam"
+	dh_auto_configure -B build-udeb -- $(SCREEN_CONFIGURE)
+	# Assert the use of fifos instead of sockets
+	cd build;      grep -q "define.*NAMEDPIPE.*1" config.h || echo "#define NAMEDPIPE 1" >> config.h
+	cd build-udeb; grep -q "define.*NAMEDPIPE.*1" config.h || echo "#define NAMEDPIPE 1" >> config.h
+
+override_dh_auto_build:
+	dh_auto_build --builddirectory build
+	dh_auto_build --builddirectory build-udeb
+	dh_auto_build --sourcedirectory build/doc
+
+override_dh_auto_install:
+	# can't call the normal install target b/c it installs the
+	# info files and other crud
+	cd build;      $(MAKE) prefix=$(ROOT)/usr      SCREENENCODINGS='$$(prefix)/share/screen/utf8encodings' installdirs install_bin
+	cd build-udeb; $(MAKE) prefix=$(ROOT_UDEB)/usr SCREENENCODINGS='$$(prefix)/share/screen/utf8encodings' installdirs install_bin
+	# hack around the fact that the install target makes screen a
+	# symlink to screen-$$(VERSION)
+	rm -f      $(ROOT)/usr/bin/screen  $(ROOT_UDEB)/usr/bin/screen
+	mv -f      $(ROOT)/usr/bin/screen*      $(ROOT)/usr/bin/screen
+	mv -f $(ROOT_UDEB)/usr/bin/screen* $(ROOT_UDEB)/usr/bin/screen
+	# make it setgid utmp only in udeb
+	chown root:utmp $(ROOT_UDEB)/usr/bin/screen
+	chmod 2755      $(ROOT_UDEB)/usr/bin/screen
+	chmod  755      $(ROOT)/usr/bin/screen
+	# Fix package-contains-info-dir-file, remove /usr/share/info/dir.gz
+	rm -f $(ROOT)/usr/share/info/dir*
+	# Remove documentation from udeb
+	rm -rf $(ROOT_UDEB)/usr/share/info $(ROOT_UDEB)/usr/share/man
+
+override_dh_installinit:
+	dh_installinit --no-start --init-script=screen-cleanup
+
+override_dh_installsystemd:
+	dh_installsystemd --name=screen-cleanup
+
+override_dh_fixperms:
+	dh_fixperms -X/usr/bin/screen
+
+override_dh_strip:
+	dh_strip --dbgsym-migration=screen-dbg

@@ -1,0 +1,74 @@
+Author: Jan Christoph Nordholz <hesso@pool.math.tu-berlin.de>
+Description: Add lookup code for the creation time of each session.
+ Requires digging in /proc/$pid and /proc/uptime, though, so it's
+ definitely no candidate for the Beautiful C contest.
+ .
+ Affects screen's behaviour in the following situations:
+ .
+ * 'screen -ls' lists available sessions sorted chronologically
+ * 'screen -RR' now picks the youngest session instead of an
+   arbitrary one
+ .
+ Patch 1/3: documentation
+Bug-Debian: https://bugs.debian.org/206572
+Forwarded: not-yet
+
+--- a/doc/screen.1
++++ b/doc/screen.1
+@@ -244,7 +244,7 @@
+ .IR screen ,
+ but prints a list of
+ .I pid.tty.host
+-strings identifying your
++strings and creation timestamps identifying your
+ .I screen
+ sessions.
+ Sessions marked `detached' can be resumed with \*Qscreen \-r\*U. Those marked
+@@ -351,7 +351,7 @@
+ .I screen
+ is detached. Otherwise lists available sessions.
+ .B \-RR
+-attempts to resume the first detached
++attempts to resume the youngest (in terms of creation time) detached
+ .I screen
+ session it finds.  If successful, all other command-line options are ignored.
+ If no detached session exists, starts a new session using the specified
+@@ -361,6 +361,8 @@
+ .I screen
+ is run as a login-shell (actually screen uses \*Q\-xRR\*U in that case).
+ For combinations with the \fB\-d\fP/\fB\-D\fP option see there.
++.B Note:
++Time-based session selection is a Debian addition.
+ .TP 5
+ .BI "\-s " program 
+ sets the default shell to the program specified, instead of the value
+--- a/doc/screen.texinfo
++++ b/doc/screen.texinfo
+@@ -321,7 +321,8 @@
+ @itemx -list [@var{match}]
+ Do not start @code{screen}, but instead print a list of session
+ identification strings (usually of the form @var{pid.tty.host};
+-@pxref{Session Name}).  Sessions marked @samp{detached} can be resumed
++@pxref{Session Name}) and the corresponding creation timestamps.
++Sessions marked @samp{detached} can be resumed
+ with @code{screen -r}.  Those marked @samp{attached} are running and
+ have a controlling terminal.  If the session runs in multiuser mode,
+ it is marked @samp{multi}.  Sessions marked as @samp{unreachable} either
+@@ -415,14 +416,15 @@
+ when only one @code{screen} is detached. Otherwise lists available sessions.
+ 
+ @item -RR
+-Resume the first appropriate detached @code{screen} session.  If
+-successful, all other command-line options are ignored.  If no detached
++Resume the most-recently created appropriate detached @code{screen} session.
++If successful, all other command-line options are ignored.  If no detached
+ session exists, start a new session using the specified options, just as
+ if @samp{-R} had not been specified.  This option is set by default if
+ screen is run as a login-shell (actually screen uses @samp{-xRR} in
+ that case).
+ For combinations with the 
+ @samp{-D}/@samp{-d} option see there.
++@samp{Note:} Time-based session selection is a Debian addition.
+ 
+ @item -s @var{program}
+ Set the default shell to be @var{program}.  By default, @code{screen}

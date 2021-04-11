@@ -1,0 +1,2 @@
+# Screen is setgid by default to be able to write to the utmp database
+screen-udeb udeb: setgid-binary usr/bin/screen 2755 root/utmp

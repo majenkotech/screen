@@ -1,0 +1,77 @@
+Author: Jan Christoph Nordholz <hesso@pool.math.tu-berlin.de>
+Description: Add lookup code for the creation time of each session.
+ Requires digging in /proc/$pid and /proc/uptime, though, so it's
+ definitely no candidate for the Beautiful C contest.
+ .
+ Affects screen's behaviour in the following situations:
+ .
+ * 'screen -ls' lists available sessions sorted chronologically
+ * 'screen -RR' now picks the youngest session instead of an
+   arbitrary one
+ .
+ Patch 2/3: new utility functions
+Bug-Debian: https://bugs.debian.org/206572
+Forwarded: not-yet
+
+--- a/extern.h
++++ b/extern.h
+@@ -395,6 +395,8 @@
+ #else
+ extern int   xsnprintf __P(());
+ #endif
++extern time_t SessionCreationTime __P((const char *));
++extern time_t GetUptime __P((void));
+ 
+ 
+ /* acl.c */
+--- a/misc.c
++++ b/misc.c
+@@ -30,6 +30,7 @@
+ #include <sys/types.h>
+ #include <sys/stat.h>	/* mkdir() declaration */
+ #include <signal.h>
++#include <fcntl.h>
+ 
+ #include "config.h"
+ #include "screen.h"
+@@ -796,3 +797,40 @@
+ }
+ 
+ #endif
++
++time_t SessionCreationTime(const char *fifo) {
++  char ppath[20];
++  int pfd;
++  char pdata[512];
++  char *jiffies;
++
++  int pid = atoi(fifo);
++  if (pid <= 0) return 0;
++  sprintf(ppath, "/proc/%u/stat", pid);
++  pfd = open(ppath, O_RDONLY);
++  if (pfd < 0) return 0;
++  while (1) {
++    int R=0, RR;
++    RR = read(pfd, pdata + R, 512-R);
++    if (RR < 0) {close(pfd); return 0;}
++    else if (RR == 0) break;
++  }
++  close(pfd);
++
++  for (pfd=21, jiffies=pdata; pfd; --pfd) {
++    jiffies = strchr(jiffies, ' ');
++    if (!jiffies) break; else ++jiffies;
++  }
++  if (!jiffies) return 0;
++
++  return atol(jiffies) / 100;
++}
++
++time_t GetUptime(void) {
++  char uptimestr[32];
++  int fd = open("/proc/uptime", O_RDONLY);
++  if (fd < 0) return 0;
++  (void)read(fd, uptimestr, 32);
++  close(fd);
++  return atol(uptimestr);
++}

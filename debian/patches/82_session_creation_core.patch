@@ -1,0 +1,161 @@
+Author: Jan Christoph Nordholz <hesso@pool.math.tu-berlin.de>
+Description: Add lookup code for the creation time of each session.
+ Requires digging in /proc/$pid and /proc/uptime, though, so it's
+ definitely no candidate for the Beautiful C contest.
+ .
+ Affects screen's behaviour in the following situations:
+ .
+ * 'screen -ls' lists available sessions sorted chronologically
+ * 'screen -RR' now picks the youngest session instead of an
+   arbitrary one
+ .
+ Patch 3/3: implementation of actual new feature
+Bug-Debian: https://bugs.debian.org/206572
+Bug-Debian: https://bugs.debian.org/507817
+Forwarded: not-yet
+
+--- a/socket.c
++++ b/socket.c
+@@ -137,16 +137,18 @@
+   int sdirlen;
+   int  matchlen = 0;
+   char *name, *n;
+-  int firsts = -1, sockfd;
+-  char *firstn = NULL;
++  int sockfd;
+   int nfound = 0, ngood = 0, ndead = 0, nwipe = 0, npriv = 0;
+   int nperfect = 0;
++  time_t time_sysboot = time(NULL) - GetUptime();
+   struct sent
+     {
+       struct sent *next;
+       int mode;
++      int fd;
+       char *name;
+-    } *slist, **slisttail, *sent, *nsent;
++      time_t time_created;
++    } *slist, **slisttail, *sent, *nsent, *schosen;
+ 
+   if (match)
+     {
+@@ -172,7 +174,7 @@
+   if ((dirp = opendir(SockPath)) == 0)
+     Panic(errno, "Cannot opendir %s", SockPath);
+ 
+-  slist = 0;
++  slist = schosen = NULL;
+   slisttail = &slist;
+   while ((dp = readdir(dirp)))
+     {
+@@ -255,13 +257,16 @@
+       debug("  store it.\n");
+       if ((sent = (struct sent *)malloc(sizeof(struct sent))) == 0)
+ 	continue;
+-      sent->next = 0;
+       sent->name = SaveStr(name);
+       sent->mode = mode;
++      sent->time_created = time_sysboot + SessionCreationTime(name);
++      for (slisttail = &slist; *slisttail; slisttail = &((*slisttail)->next)) {
++        if ((*slisttail)->time_created < sent->time_created) break;
++      }
++      sent->next = *slisttail;
+       *slisttail = sent;
+-      slisttail = &sent->next;
+       nfound++;
+-      sockfd = MakeClientSocket(0, *is_sock);
++      sent->fd = sockfd = MakeClientSocket(0, *is_sock);
+ #ifdef USE_SETEUID
+       /* MakeClientSocket sets ids back to eff */
+       xseteuid(real_uid);
+@@ -326,12 +331,17 @@
+       ngood++;
+       if (cmatch)
+ 	nperfect++;
+-      if (fdp && (firsts == -1 || (cmatch && nperfect == 1)))
++      // prefer the current one if one of the following is true:
++      // - we had no previous hit
++      // - the current one has a later timestamp than our previous one, and we haven't found a perfect match yet
++      // - this one is the first perfect match
++      if (fdp && (!schosen ||
++		(schosen && schosen->time_created < sent->time_created && nperfect == 0) ||
++		(cmatch && nperfect == 1)))
+ 	{
+-	  if (firsts != -1)
+-	    close(firsts);
+-	  firsts = sockfd;
+-	  firstn = sent->name;
++	  if (schosen)
++	    close(schosen->fd);
++	  schosen = sent;
+ 	  debug("  taken.\n");
+ 	}
+       else
+@@ -359,36 +369,27 @@
+ 	}
+       for (sent = slist; sent; sent = sent->next)
+ 	{
+-	  switch (sent->mode)
++	  char timestr[64];
++	  if (sent->time_created == 0)
+ 	    {
+-	    case 0700:
+-	      printf("\t%s\t(Attached)\n", sent->name);
+-	      break;
+-	    case 0600:
+-	      printf("\t%s\t(Detached)\n", sent->name);
+-	      break;
++	      sprintf(timestr, "??" "?");
++	    }
++	  else
++	    {
++	      strftime(timestr, 64, "%x %X", localtime(&sent->time_created));
++	    }
++          printf("\t%s\t(%s)\t(%s)\n", sent->name, timestr,
++		(sent->mode == 0700) ? "Attached" :
++		(sent->mode == 0600) ? "Detached" :
+ #ifdef MULTIUSER
+-	    case 0701:
+-	      printf("\t%s\t(Multi, attached)\n", sent->name);
+-	      break;
+-	    case 0601:
+-	      printf("\t%s\t(Multi, detached)\n", sent->name);
+-	      break;
++		(sent->mode == 0701) ? "Multi, attached" :
++		(sent->mode == 0601) ? "Multi, detached" :
+ #endif
+-	    case -1:
+-	      /* No trigraphs here! */
+-	      printf("\t%s\t(Dead ?%c?)\n", sent->name, '?');
+-	      break;
+-	    case -2:
+-	      printf("\t%s\t(Removed)\n", sent->name);
+-	      break;
+-	    case -3:
+-	      printf("\t%s\t(Remote or dead)\n", sent->name);
+-	      break;
+-	    case -4:
+-	      printf("\t%s\t(Private)\n", sent->name);
+-	      break;
+-	    }
++		(sent->mode ==   -1) ? "Dead ??" "?" :
++		(sent->mode ==   -2) ? "Removed" :
++		(sent->mode ==   -3) ? "Remote or dead" :
++		(sent->mode ==   -4) ? "Private" :
++		"Unknown");
+ 	}
+     }
+   if (ndead && !quietflag)
+@@ -399,10 +400,10 @@
+       else
+         Msg(0, m, ndead > 1 ? "s" : "", ndead > 1 ? "" : "es");	/* other args for nethack */
+     }
+-  if (firsts != -1)
++  if (schosen)
+     {
+-      sprintf(SockPath + sdirlen, "/%s", firstn);
+-      *fdp = firsts;
++      sprintf(SockPath + sdirlen, "/%s", schosen->name);
++      *fdp = schosen->fd;
+     }
+   else
+     SockPath[sdirlen] = 0;

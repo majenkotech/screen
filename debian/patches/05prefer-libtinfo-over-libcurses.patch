@@ -1,0 +1,35 @@
+Origin: https://bugs.debian.org/cgi-bin/bugreport.cgi?filename=0001-Prefer-libtinfo-over-libcurses.patch;att=1;msg=14;bug=819789
+From: Sven Joachim <svenjoac@gmx.de>
+Date: Sat, 2 Apr 2016 13:31:00 +0200
+Subject: Prefer libtinfo over libcurses
+Bug-Debian: https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=819789
+Forwarded: no
+
+Try to link with -ltinfo before -lcurses to avoid a spurious
+dependency on systems where ncurses is built with "--with-termlib".
+---
+ configure.ac | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+--- a/configure.ac
++++ b/configure.ac
+@@ -626,6 +626,9 @@
+ AC_CHECKING(for tgetent)
+ AC_TRY_LINK(,tgetent((char *)0, (char *)0);,,
+ olibs="$LIBS"
++LIBS="-ltinfo $olibs"
++AC_CHECKING(libtinfo)
++AC_TRY_LINK(,tgetent((char *)0, (char *)0);,,
+ LIBS="-lcurses $olibs"
+ AC_CHECKING(libcurses)
+ AC_TRY_LINK(,[
+@@ -650,9 +653,6 @@
+ LIBS="-lncurses $olibs"
+ AC_CHECKING(libncurses)
+ AC_TRY_LINK(,tgetent((char *)0, (char *)0);,,
+-LIBS="-ltinfo $olibs"
+-AC_CHECKING(libtinfo)
+-AC_TRY_LINK(,tgetent((char *)0, (char *)0);,,
+ AC_MSG_ERROR(!!! no tgetent - no screen)))))))))
+ 
+ AC_TRY_RUN([
